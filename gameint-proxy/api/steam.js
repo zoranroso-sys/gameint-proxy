@@ -55,13 +55,20 @@ module.exports = async function handler(req, res) {
     // so making 3 separate calls with different day_range values gives identical reviews.
     // Instead: fetch 100 recent reviews once, filter by timestamp_created server-side.
     try {
-      const r = await fetch(
-        `https://store.steampowered.com/appreviews/${appid}?json=1&language=all&purchase_type=all&num_per_page=100&filter=recent`,
-        { headers:{'User-Agent':'GAMEINT/1.0'} }
-      );
-      if (!r.ok) { res.status(r.status).json({ error: `Steam ${r.status}` }); return; }
-      const d = await r.json();
-      const reviews = d.reviews || [];
+      // Fetch up to 3 pages of 100 reviews (300 total) to cover high-traffic games
+      let reviews = [];
+      let cursor = '*';
+      for (let page = 0; page < 3; page++) {
+        const url = `https://store.steampowered.com/appreviews/${appid}?json=1&language=all&purchase_type=all&num_per_page=100&filter=recent&cursor=${encodeURIComponent(cursor)}`;
+        const r = await fetch(url, { headers:{'User-Agent':'GAMEINT/1.0'} });
+        if (!r.ok) break;
+        const d = await r.json();
+        const batch = d.reviews || [];
+        if (!batch.length) break;
+        reviews = reviews.concat(batch);
+        cursor = d.cursor;
+        if (!cursor || batch.length < 100) break; // no more pages
+      }
 
       const now = Math.floor(Date.now() / 1000);
       const windows = [
