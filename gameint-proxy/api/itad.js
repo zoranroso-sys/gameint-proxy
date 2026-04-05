@@ -11,12 +11,12 @@ module.exports = async function handler(req, res) {
 
   try {
     if (action === 'lookup') {
+      // Use literal slash — %2F causes "found:false" on ITAD's end
       const r = await fetch(`https://api.isthereanydeal.com/games/lookup/v1?key=${key}&appid=steam/${appid}`);
       if (!r.ok) { res.status(r.status).json({ error: `ITAD lookup ${r.status}` }); return; }
       res.status(200).json(await r.json());
 
     } else if (action === 'prices') {
-      // Vercel auto-parses JSON body — req.body is already an array
       const ids = Array.isArray(req.body) ? req.body : [req.body];
       const r = await fetch(`https://api.isthereanydeal.com/games/prices/v3?key=${key}&country=US`, {
         method: 'POST',
