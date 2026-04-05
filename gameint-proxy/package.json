@@ -1,6 +1,7 @@
 {
   "name": "gameint-proxy",
   "version": "1.0.0",
-  "description": "GAMEINT backend proxy — routes API calls server-side so keys stay secret",
-  "private": true
+  "description": "GAMEINT backend proxy",
+  "private": true,
+  "type": "module"
 }
