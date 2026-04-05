@@ -18,15 +18,22 @@ module.exports = async function handler(req, res) {
     } catch(e) { res.status(502).json({ error: e.message }); }
 
   } else if (type === 'appreviews') {
+    // Global summary — filter=all or filter=recent
     const f = filter || 'all';
     try {
       const r = await fetch(`https://store.steampowered.com/appreviews/${appid}?json=1&language=all&purchase_type=all&num_per_page=0&filter=${f}`, { headers:{'User-Agent':'GAMEINT/1.0'} });
       res.status(200).json(await r.json());
     } catch(e) { res.status(502).json({ error: e.message }); }
 
+  } else if (type === 'reviews-recent') {
+    // Alias for appreviews with filter=recent — keeps HTML backward-compatible
+    try {
+      const r = await fetch(`https://store.steampowered.com/appreviews/${appid}?json=1&language=all&purchase_type=all&num_per_page=0&filter=recent`, { headers:{'User-Agent':'GAMEINT/1.0'} });
+      res.status(200).json(await r.json());
+    } catch(e) { res.status(502).json({ error: e.message }); }
+
   } else if (type === 'reviews-geo') {
-    // Fetch 20 reviews per language and count voted_up
-    // Keep it small (20 not 100) to stay within Vercel's 10s function timeout
+    // Per-language sentiment: fetch real reviews and count voted_up
     const LANGS = [
       { lang:'english',   flag:'🇺🇸', label:'English'    },
       { lang:'schinese',  flag:'🇨🇳', label:'Chinese'    },
@@ -39,7 +46,6 @@ module.exports = async function handler(req, res) {
       { lang:'koreana',   flag:'🇰🇷', label:'Korean'     },
     ];
 
-    // Run sequentially in small batches to avoid timeout — 3 at a time
     const results = [];
     for (let i = 0; i < LANGS.length; i += 3) {
       const batch = LANGS.slice(i, i + 3);
@@ -55,7 +61,7 @@ module.exports = async function handler(req, res) {
           if (!r.ok) return null;
           const d = await r.json();
           const reviews = d.reviews || [];
-          if (reviews.length < 3) return null; // skip if too few
+          if (reviews.length < 3) return null;
           const pos = reviews.filter(rv => rv.voted_up).length;
           const tot = reviews.length;
           const totalReviews = d.query_summary?.total_reviews || 0;
@@ -64,10 +70,9 @@ module.exports = async function handler(req, res) {
       }));
       batchResults.forEach(r => { if (r.status==='fulfilled' && r.value) results.push(r.value); });
     }
-
     res.status(200).json(results.sort((a,b) => b.totalReviews - a.totalReviews));
 
   } else {
-    res.status(400).json({ error: 'unknown type' });
+    res.status(400).json({ error: 'unknown type: ' + type });
   }
 };

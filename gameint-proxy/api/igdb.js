@@ -29,7 +29,21 @@ const handler = async (req, res) => {
 
   try {
     const token = await getToken();
-    const body = await readBody(req);
+
+    // Read body from stream (bodyParser is disabled so stream is intact)
+    // Fallback to req.body if already parsed (e.g. in some environments)
+    let body;
+    if (typeof req.body === 'string' && req.body) {
+      body = req.body;
+    } else {
+      body = await readBody(req);
+    }
+
+    if (!body) {
+      res.status(400).json({ error: 'Empty query body' });
+      return;
+    }
+
     const r = await fetch('https://api.igdb.com/v4/games', {
       method: 'POST',
       headers: {
@@ -39,13 +53,18 @@ const handler = async (req, res) => {
       },
       body,
     });
+
     if (!r.ok) { res.status(r.status).json({ error: `IGDB ${r.status}` }); return; }
     const data = await r.json();
-    // Cache IGDB results for 12 hours — game metadata rarely changes
+
+    // Cache game metadata results for 12 hours
     res.setHeader('Cache-Control', 'public, s-maxage=43200, stale-while-revalidate=3600');
     res.status(200).json(data);
-  } catch (e) { res.status(502).json({ error: e.message }); }
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
 };
 
-handler.config = { api: { bodyParser: { sizeLimit: '1mb' } } };
+// CRITICAL: disable bodyParser so readBody can read the raw stream
+handler.config = { api: { bodyParser: false } };
 module.exports = handler;
