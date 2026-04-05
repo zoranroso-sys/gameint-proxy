@@ -1,7 +1,5 @@
 {
   "name": "gameint-proxy",
   "version": "1.0.0",
-  "description": "GAMEINT backend proxy",
-  "private": true,
-  "type": "module"
+  "private": true
 }

@@ -4,23 +4,18 @@ async function getToken() {
   if (_token && Date.now() < _tokenExp) return _token;
   const id = process.env.IGDB_CLIENT_ID, sec = process.env.IGDB_CLIENT_SECRET;
   if (!id || !sec) throw new Error('IGDB keys not set');
-  const r = await fetch(`https://id.twitch.tv/oauth2/token?client_id=${id}&client_secret=${sec}&grant_type=client_credentials`, { method: 'POST' });
-  if (!r.ok) throw new Error(`Twitch token error: ${r.status}`);
+  const r = await fetch(
+    `https://id.twitch.tv/oauth2/token?client_id=${id}&client_secret=${sec}&grant_type=client_credentials`,
+    { method: 'POST' }
+  );
+  if (!r.ok) throw new Error(`Twitch auth failed: ${r.status}`);
   const d = await r.json();
   _token = d.access_token;
   _tokenExp = Date.now() + (d.expires_in - 60) * 1000;
   return _token;
 }
 
-async function readBody(req) {
-  return new Promise((resolve) => {
-    let data = '';
-    req.on('data', chunk => data += chunk);
-    req.on('end', () => resolve(data));
-  });
-}
-
-export default async function handler(req, res) {
+const handler = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -29,13 +24,22 @@ export default async function handler(req, res) {
 
   try {
     const token = await getToken();
-    const body = await readBody(req);
+    // req.body is already parsed as a string by Vercel (bodyParser handles text/plain)
+    const body = typeof req.body === 'string' ? req.body : String(req.body || '');
     const r = await fetch('https://api.igdb.com/v4/games', {
       method: 'POST',
-      headers: { 'Client-ID': process.env.IGDB_CLIENT_ID, 'Authorization': `Bearer ${token}`, 'Content-Type': 'text/plain' },
+      headers: {
+        'Client-ID': process.env.IGDB_CLIENT_ID,
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'text/plain',
+      },
       body,
     });
-    if (!r.ok) { res.status(r.status).json({ error: `IGDB error: ${r.status}` }); return; }
+    if (!r.ok) { res.status(r.status).json({ error: `IGDB ${r.status}` }); return; }
     res.status(200).json(await r.json());
   } catch (e) { res.status(502).json({ error: e.message }); }
-}
+};
+
+// Tell Vercel to accept text/plain bodies (not just JSON)
+handler.config = { api: { bodyParser: { sizeLimit: '1mb' } } };
+module.exports = handler;
