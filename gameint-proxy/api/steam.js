@@ -50,26 +50,38 @@ module.exports = async function handler(req, res) {
     } catch(e) { res.status(502).json({ error: e.message }); }
 
   } else if (type === 'reviews-timeline') {
-    // Fetch sentiment across multiple time windows by counting voted_up on actual reviews
-    const windows = [
-      { label: 'Last 7d',  day_range: 7  },
-      { label: 'Last 30d', day_range: 30 },
-      { label: 'Last 90d', day_range: 90 },
-    ];
+    // Fetch one large batch of recent reviews, then bin by timestamp.
+    // day_range only affects query_summary, NOT the actual review objects returned —
+    // so making 3 separate calls with different day_range values gives identical reviews.
+    // Instead: fetch 100 recent reviews once, filter by timestamp_created server-side.
     try {
-      const results = await Promise.allSettled(windows.map(async w => {
-        const r = await fetch(
-          `https://store.steampowered.com/appreviews/${appid}?json=1&language=all&purchase_type=all&num_per_page=40&filter=recent&day_range=${w.day_range}`,
-          { headers:{'User-Agent':'GAMEINT/1.0'} }
-        );
-        if (!r.ok) return null;
-        const d = await r.json();
-        const reviews = d.reviews || [];
-        if (!reviews.length) return null;
-        const pos = reviews.filter(rv => rv.voted_up).length;
-        return { label: w.label, day_range: w.day_range, pos, tot: reviews.length, pct: Math.round(pos / reviews.length * 100) };
-      }));
-      const data = results.filter(r => r.status === 'fulfilled' && r.value).map(r => r.value);
+      const r = await fetch(
+        `https://store.steampowered.com/appreviews/${appid}?json=1&language=all&purchase_type=all&num_per_page=100&filter=recent`,
+        { headers:{'User-Agent':'GAMEINT/1.0'} }
+      );
+      if (!r.ok) { res.status(r.status).json({ error: `Steam ${r.status}` }); return; }
+      const d = await r.json();
+      const reviews = d.reviews || [];
+
+      const now = Math.floor(Date.now() / 1000);
+      const windows = [
+        { label: 'Last 7d',  cutoff: now - 7  * 86400 },
+        { label: 'Last 30d', cutoff: now - 30 * 86400 },
+        { label: 'Last 90d', cutoff: now - 90 * 86400 },
+      ];
+
+      const data = windows.map(w => {
+        const bucket = reviews.filter(rv => rv.timestamp_created >= w.cutoff);
+        if (bucket.length < 3) return null; // too few to be meaningful
+        const pos = bucket.filter(rv => rv.voted_up).length;
+        return {
+          label: w.label,
+          pos,
+          tot: bucket.length,
+          pct: Math.round(pos / bucket.length * 100),
+        };
+      }).filter(Boolean);
+
       res.status(200).json(data);
     } catch(e) { res.status(502).json({ error: e.message }); }
 
