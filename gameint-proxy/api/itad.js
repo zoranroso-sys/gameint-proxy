@@ -7,11 +7,10 @@ module.exports = async function handler(req, res) {
   const key = process.env.ITAD_API_KEY;
   if (!key) { res.status(500).json({ error: 'ITAD_API_KEY not set' }); return; }
 
-  const { action, appid } = req.query;
+  const { action, appid, id } = req.query;
 
   try {
     if (action === 'lookup') {
-      // Use literal slash — %2F causes "found:false" on ITAD's end
       const r = await fetch(`https://api.isthereanydeal.com/games/lookup/v1?key=${key}&appid=${appid}`);
       if (!r.ok) { res.status(r.status).json({ error: `ITAD lookup ${r.status}` }); return; }
       res.status(200).json(await r.json());
@@ -26,8 +25,15 @@ module.exports = async function handler(req, res) {
       if (!r.ok) { res.status(r.status).json({ error: `ITAD prices ${r.status}` }); return; }
       res.status(200).json(await r.json());
 
+    } else if (action === 'history') {
+      // Full price history time-series for a single game
+      // ?action=history&id={itadGameId}
+      const r = await fetch(`https://api.isthereanydeal.com/games/history/v2?key=${key}&id=${id}&country=US`);
+      if (!r.ok) { res.status(r.status).json({ error: `ITAD history ${r.status}` }); return; }
+      res.status(200).json(await r.json());
+
     } else {
-      res.status(400).json({ error: 'action must be lookup or prices' });
+      res.status(400).json({ error: 'action must be: lookup, prices, or history' });
     }
   } catch (e) { res.status(502).json({ error: e.message }); }
 };
