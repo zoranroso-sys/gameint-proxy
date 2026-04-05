@@ -130,6 +130,31 @@ module.exports = async function handler(req, res) {
     }
     res.status(200).json(results.sort((a,b) => b.totalReviews - a.totalReviews));
 
+  } else if (type === 'news') {
+    // Steam news feed (no key required)
+    const count = req.query.count || 8;
+    try {
+      const r = await fetch(
+        `https://api.steampowered.com/ISteamNews/GetNewsForApp/v2/?appid=${appid}&count=${count}&maxlength=600&format=json`,
+        { headers:{'User-Agent':'GAMEINT/1.0'} }
+      );
+      if (!r.ok) { res.status(r.status).json({ error: `Steam news ${r.status}` }); return; }
+      const d = await r.json();
+      // Return cleaned items only
+      const items = (d?.appnews?.newsitems || []).map(n => ({
+        gid:      n.gid,
+        title:    n.title,
+        url:      n.url,
+        author:   n.author || '',
+        contents: (n.contents || '').replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim().slice(0,300),
+        date:     n.date,
+        feedname: n.feedname,
+        feedlabel:n.feedlabel,
+      }));
+      res.setHeader('Cache-Control','public, s-maxage=3600, stale-while-revalidate=900');
+      res.status(200).json(items);
+    } catch(e) { res.status(502).json({ error: e.message }); }
+
   } else {
     res.status(400).json({ error: 'unknown type: ' + type });
   }
