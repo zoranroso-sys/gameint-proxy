@@ -12,7 +12,7 @@ module.exports = async function handler(req, res) {
   try {
     if (action === 'lookup') {
       // Use literal slash — %2F causes "found:false" on ITAD's end
-      const r = await fetch(`https://api.isthereanydeal.com/games/lookup/v1?key=${key}&appid=steam/${appid}`);
+      const r = await fetch(`https://api.isthereanydeal.com/games/lookup/v1?key=${key}&appid=${appid}`);
       if (!r.ok) { res.status(r.status).json({ error: `ITAD lookup ${r.status}` }); return; }
       res.status(200).json(await r.json());
 
