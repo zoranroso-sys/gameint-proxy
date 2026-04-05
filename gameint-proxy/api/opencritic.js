@@ -4,53 +4,46 @@ module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   if (req.method === 'OPTIONS') { res.status(200).end(); return; }
 
-  const KEY = process.env.OPENCRITIC_RAPIDAPI_KEY;
-  const RAPID_HOST = 'opencritic-api.p.rapidapi.com';
-  const BASE       = `https://${RAPID_HOST}`;
-  const rapidHeaders = KEY ? { 'X-RapidAPI-Key': KEY, 'X-RapidAPI-Host': RAPID_HOST } : {};
+  const KEY  = process.env.OPENCRITIC_RAPIDAPI_KEY;
+  const HOST = 'opencritic-api.p.rapidapi.com';
+  const BASE = `https://${HOST}`;
+  const headers = KEY ? { 'x-rapidapi-key': KEY, 'x-rapidapi-host': HOST } : null;
 
   const { q, id, reviews } = req.query;
 
-  // Helper — try RapidAPI first, fall back to old public OC API (may fail if they've locked it)
-  async function ocFetch(rapidPath, publicPath) {
-    if (KEY) {
-      try {
-        const r = await fetch(`${BASE}${rapidPath}`, { headers: rapidHeaders });
-        if (r.ok) return [await r.json(), r.status];
-        console.warn('[OC proxy] RapidAPI', r.status, rapidPath);
-      } catch(e) { console.warn('[OC proxy] RapidAPI error', e.message); }
-    }
-    // Fallback to old public API
+  async function rapid(path) {
+    if (!headers) return null;
     try {
-      const r = await fetch(`https://api.opencritic.com/api${publicPath}`);
-      if (r.ok) return [await r.json(), r.status];
-    } catch(e) {}
-    return [null, 502];
+      const r = await fetch(`${BASE}${path}`, { headers });
+      if (r.ok) return r.json();
+      console.warn('[OC] RapidAPI', r.status, path);
+    } catch(e) { console.warn('[OC] fetch error', e.message); }
+    return null;
   }
 
   try {
     if (id && reviews) {
-      // Individual critic reviews — RapidAPI: GET /review/game?gameId={id}
-      const [data, status] = await ocFetch(
-        `/review/game?gameId=${id}`,
-        `/game/${id}/reviews?skip=0&limit=12&sort=score`
-      );
-      if (!data) { res.status(502).json({ error: 'OC reviews unavailable' }); return; }
-      res.status(200).json(data);
+      // Correct endpoint: /reviews/game/{id}  (path param, plural)
+      const data = await rapid(`/reviews/game/${id}?skip=0&sort=score`);
+      if (data) {
+        res.setHeader('Cache-Control', 'public, s-maxage=3600');
+        res.status(200).json(Array.isArray(data) ? data : data.reviews || data.results || []);
+        return;
+      }
+      res.status(502).json({ error: 'OC reviews unavailable' });
 
     } else if (id) {
-      // Game detail — RapidAPI: GET /game/{id}
-      const [data, status] = await ocFetch(`/game/${id}`, `/game/${id}`);
-      if (!data) { res.status(502).json({ error: 'OC detail unavailable' }); return; }
-      res.setHeader('Cache-Control', 'public, s-maxage=21600, stale-while-revalidate=3600');
-      res.status(200).json(data);
+      // /game/{id}
+      const data = await rapid(`/game/${id}`);
+      if (data) {
+        res.setHeader('Cache-Control', 'public, s-maxage=21600, stale-while-revalidate=3600');
+        res.status(200).json(data); return;
+      }
+      res.status(502).json({ error: 'OC detail unavailable' });
 
     } else if (q) {
-      // Search — RapidAPI: GET /game/search?criteria={q}
-      const [data] = await ocFetch(
-        `/game/search?criteria=${encodeURIComponent(q)}`,
-        `/game/search?criteria=${encodeURIComponent(q)}`
-      );
+      // /game/search?criteria={q}
+      const data = await rapid(`/game/search?criteria=${encodeURIComponent(q)}`);
       res.status(200).json(data || []);
 
     } else {
