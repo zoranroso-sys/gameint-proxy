@@ -24,16 +24,24 @@ module.exports = async function handler(req, res) {
       res.status(200).json(await r.json());
 
     } else if (action === 'historylow') {
-      // All-time low prices per store — POST array of game IDs
       const ids = Array.isArray(req.body) ? req.body : [req.body];
       const r = await fetch(`https://api.isthereanydeal.com/games/historylow/v1?key=${key}&country=US`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(ids),
       });
       if (!r.ok) { res.status(r.status).json({ error: `ITAD historylow ${r.status}` }); return; }
+      // Return raw so client can see exact structure
       res.status(200).json(await r.json());
 
+    } else if (action === 'debuglow') {
+      // GET-friendly debug: pass id as query param, returns raw response
+      const r = await fetch(`https://api.isthereanydeal.com/games/historylow/v1?key=${key}&country=US`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify([id]),
+      });
+      const raw = await r.json();
+      res.status(200).json({ status: r.status, raw });
+
     } else {
-      res.status(400).json({ error: 'action must be: lookup, prices, or historylow' });
+      res.status(400).json({ error: 'action must be: lookup, prices, historylow, or debuglow' });
     }
   } catch (e) { res.status(502).json({ error: e.message }); }
 };
